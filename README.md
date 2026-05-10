@@ -65,9 +65,21 @@ The orchestrator (`runBenchmark` in nexus-agents) handles concurrency, timeouts,
 - **Put variants into `config` or the constructor**, not CLI flags passed through to every instance. Example: `new MyBenchAdapter({ variant: 'lite' })`.
 - **Keep pure evaluation separate from network calls.** Makes the tests reproducible and fast.
 
+## Why a separate repo?
+
+The nexus-agents core stays lean — benchmark harnesses are evaluation-only code that 99% of consumers don't run. Concentrating them in dedicated `nexus-eval-*` repos lets each harness:
+
+- Evolve on its own cadence (dataset bumps, harness rewrites, model-API churn) without forcing nexus-agents minor releases.
+- Pull in its own dependency tree (Docker SDKs, dataset libs, eval-specific Python tooling) without bloating the npm-installable core.
+- Be peer-tested in isolation — the BenchmarkAdapter contract at the boundary is the only API surface either side has to maintain.
+
+This is policy, not a suggestion: nexus-agents' [`benchmark-extraction-gate`](https://github.com/williamzujkowski/nexus-agents/blob/main/.github/workflows/benchmark-extraction-gate.yml) workflow fails CI on any PR that adds files under `packages/nexus-agents/src/swe-bench/` or `packages/nexus-agents/src/benchmarks/atbench/`. If you're proposing a new benchmark, this template is the right starting point. See [nexus-agents epic #2514](https://github.com/williamzujkowski/nexus-agents/issues/2514) for the rationale.
+
 ## Existing benchmarks using this pattern
 
-- [nexus-eval-swebench](https://github.com/williamzujkowski/nexus-eval-swebench) — SWE-bench Lite/Verified/Full (extraction tracked by nexus-agents #1962)
+- [nexus-eval-swebench](https://github.com/williamzujkowski/nexus-eval-swebench) — SWE-bench Lite / Verified / Full (clean-room rewrite, v0.2)
+- [nexus-eval-atbench](https://github.com/williamzujkowski/nexus-eval-atbench) — Atbench (agent-trajectory safety)
+- [nexus-eval-swebench-pro](https://github.com/williamzujkowski/nexus-eval-swebench-pro) — SWE-bench Pro (731 multi-language instances)
 
 ## Ecosystem
 
