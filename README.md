@@ -91,7 +91,7 @@ The shipped repos use a consistent versioning ladder:
 
 - **v0.1 — model-only baseline**. Bundled fixture + single-round-trip model call + extract-output. Pass/fail = "did the model produce extractable output". No real evaluation.
 - **v0.2 — real evaluation**. HuggingFace / GitHub fetch loader. Sandboxed test execution. Pass/fail = "does the output pass the hidden tests".
-- **v0.3 — agentic flow**. `ICliAdapter` instead of `IModelAdapter`. Multi-turn iteration on test failures. Workspace clone at base commit (where the benchmark provides one).
+- **v0.3 — agentic flow**. Use `IAgenticAdapter` from `nexus-agents` (≥ 2.71.x with the [#2529](https://github.com/williamzujkowski/nexus-agents/issues/2529) primitive landed). The harness owns its toolset (`read_file` / `write_file` / `run_tests` / domain-specific tools); the adapter handles model orchestration. Multi-turn iteration on test failures. Workspace clone at base commit where the benchmark provides one.
 
 Land v0.1 first to validate the pipeline shape and prompt template; the expensive infrastructure (Docker eval, GPU sandbox, etc.) goes in v0.2 once the pattern is proven.
 
@@ -165,6 +165,80 @@ interface FooEvalResult {
 ```
 
 **Don't break v0.1:** v0.2 `EvalResult` extensions are all optional. Old fixture-based runs that have no hidden tests still work — the test-runner skips, the v0.1 verdict stands.
+
+### v0.3 patterns (agentic flow via `IAgenticAdapter`)
+
+When a v0.2 harness has a working test runner, the v0.3 promotion adds **multi-turn iteration**: the model edits → harness runs tests → model sees failures → model re-edits → … until pass or turn budget. Use the `IAgenticAdapter` primitive from `nexus-agents` ([#2529](https://github.com/williamzujkowski/nexus-agents/issues/2529)).
+
+**Shape:**
+
+```ts
+import { createAgenticAdapter, createOpenAIAdapter } from 'nexus-agents';
+
+const modelAdapter = createOpenAIAdapter({
+  apiKey: process.env.OPENAI_API_KEY!,
+  modelId: 'anthropic/claude-sonnet-4-6',  // gateway-fronted is fine
+});
+
+const agentic = createAgenticAdapter(modelAdapter, {
+  // Operator override for gateway-renamed models.
+  modelHints: { vendor: 'anthropic' },
+  // Optional cap on concurrent model API calls when running 100s of
+  // instances in parallel against a rate-limited provider.
+  maxConcurrent: 10,
+});
+
+const result = await agentic.runAgent({
+  systemPrompt: 'You are a code-fixing agent...',
+  userPrompt: composeUserPrompt(instance),
+  tools: [
+    { name: 'read_file', description: 'Read a file', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
+    { name: 'write_file', description: 'Write a file', inputSchema: { type: 'object', properties: { path: { type: 'string' }, contents: { type: 'string' } }, required: ['path', 'contents'] } },
+    { name: 'run_tests', description: 'Run the test suite', inputSchema: { type: 'object' } },
+  ],
+  // Omit turnBudget to use the resolved profile's default
+  // (claude-opus = 20, gemini-flash = 8, default = 10).
+  onToolCall: async (call) => {
+    switch (call.name) {
+      case 'read_file': return { content: readFileSync(...) };
+      case 'write_file': writeFileSync(...); return { content: 'written' };
+      case 'run_tests': return runHarness();
+      default: return { content: `unknown tool: ${call.name}`, isError: true };
+    }
+  },
+  onTurn: (turn) => observabilityLogger.log(turn),  // optional progress visibility
+  signal: ctx.signal,                                // optional AbortController
+});
+
+if (result.ok) {
+  // result.value.stopReason ∈ { 'agent-stopped' | 'turn-budget' | 'tool-error' | 'cancelled' }
+  // result.value.turns has the full trace
+  // result.value.adapterStrategy = 'native:anthropic' (for gateway scenarios — uses resolved vendor, NOT modelAdapter.providerId)
+}
+```
+
+**Key decisions baked into `IAgenticAdapter`:**
+
+- **Per-model behaviour** — picks `parallelToolCalls`, `promptCaching`, etc. from the served model, not the adapter. A custom OpenAI gateway fronting Claude gets Anthropic's profile (parallel tool execution + ephemeral caching) automatically. Operators can override via `modelHints`.
+- **Embedding refusal** — constructor throws if the model is detected as an embedding (e.g., `text-embedding-3-large`). Agentic loops are meaningless on embedding models.
+- **Partial-progress gradable** — `Result.ok` includes `stopReason`. Harnesses can grade "model called the right tools but ran out of turns" differently from "model never called any tool."
+
+**Workspace lifecycle for benchmarks that need a clone:**
+
+```
+runInstance:
+  1. mkdtemp + clone repo at instance.baseCommit
+  2. write instance.editableFiles into the workspace
+  3. run agentic loop with read/write/test tools scoped to the workspace
+  4. capture final state (model edits + last test verdict)
+  5. rmrf workspace
+
+evaluate:
+  6. grade by final test verdict (or upstream's grader, e.g.,
+     SWE-bench's Docker harness) on the captured state
+```
+
+The agentic loop and the test runner from v0.2 are now both available — the v0.3 harness orchestrates them.
 
 ### CI / release scaffolding
 
