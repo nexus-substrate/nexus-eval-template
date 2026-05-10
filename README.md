@@ -65,6 +65,45 @@ The orchestrator (`runBenchmark` in nexus-agents) handles concurrency, timeouts,
 - **Put variants into `config` or the constructor**, not CLI flags passed through to every instance. Example: `new MyBenchAdapter({ variant: 'lite' })`.
 - **Keep pure evaluation separate from network calls.** Makes the tests reproducible and fast.
 
+## Recommended v0.1 architecture (matches the four shipped eval repos)
+
+The five `nexus-eval-*` repos that have shipped (`swebench`, `swebench-pro`, `aider-polyglot`, `livecodebench`, `atbench`) all converged on the same internal layout. New harnesses are easier to review when they follow it:
+
+```
+src/
+├── types.ts                         # Public {Instance, Prediction, EvalResult, AdapterConfig}
+├── runner/
+│   ├── instance-loader.ts           # Bundled fixture + .jsonl/HF source (with field normalisation)
+│   ├── prompt-template.ts           # Compose system + user prompts
+│   ├── <output>-extractor.ts        # Parse model response (patch / code / edits / answer)
+│   └── agent-invoker.ts             # IModelAdapter wrapper; never throws (returns Result)
+├── adapter.ts                       # `<Bench>Adapter` implementing BenchmarkAdapter
+├── cli.ts                           # `parseArgs` + `createOpenAIAdapter` + `runBenchmark`
+├── index.ts                         # Public exports (adapter + types + runner building blocks)
+└── adapter.test.ts                  # Smoke tests (mocked IModelAdapter)
+```
+
+Adapter constructor signature is consistent: `constructor(modelAdapter: IModelAdapter, config: AdapterConfig = {})`. The `IModelAdapter` is supplied by the consumer; the harness never instantiates it directly. Operators can swap in `createOpenAIAdapter`, the Anthropic SDK, Ollama, etc. without changing the harness.
+
+### v0.1 → v0.2 → v0.3 progression
+
+The shipped repos use a consistent versioning ladder:
+
+- **v0.1 — model-only baseline**. Bundled fixture + single-round-trip model call + extract-output. Pass/fail = "did the model produce extractable output". No real evaluation.
+- **v0.2 — real evaluation**. HuggingFace / GitHub fetch loader. Sandboxed test execution. Pass/fail = "does the output pass the hidden tests".
+- **v0.3 — agentic flow**. `ICliAdapter` instead of `IModelAdapter`. Multi-turn iteration on test failures. Workspace clone at base commit (where the benchmark provides one).
+
+Land v0.1 first to validate the pipeline shape and prompt template; the expensive infrastructure (Docker eval, GPU sandbox, etc.) goes in v0.2 once the pattern is proven.
+
+### CI / release scaffolding
+
+Each shipped repo has the same two GitHub Actions workflows:
+
+- `.github/workflows/ci.yml` — typecheck + test + build on Ubuntu / Node 22, runs on PR + push to main.
+- `.github/workflows/release.yml` — tag-triggered (`v*`) `npm publish --provenance`. Requires `NPM_TOKEN` repo secret.
+
+Copy these from `nexus-eval-swebench-pro` or `nexus-eval-aider-polyglot` when scaffolding a new harness — they're identical except for the package name in the release-job comment.
+
 ## Why a separate repo?
 
 The nexus-agents core stays lean — benchmark harnesses are evaluation-only code that 99% of consumers don't run. Concentrating them in dedicated `nexus-eval-*` repos lets each harness:
@@ -78,8 +117,10 @@ This is policy, not a suggestion: nexus-agents' [`benchmark-extraction-gate`](ht
 ## Existing benchmarks using this pattern
 
 - [nexus-eval-swebench](https://github.com/williamzujkowski/nexus-eval-swebench) — SWE-bench Lite / Verified / Full (clean-room rewrite, v0.2)
-- [nexus-eval-atbench](https://github.com/williamzujkowski/nexus-eval-atbench) — Atbench (agent-trajectory safety)
 - [nexus-eval-swebench-pro](https://github.com/williamzujkowski/nexus-eval-swebench-pro) — SWE-bench Pro (731 multi-language instances)
+- [nexus-eval-aider-polyglot](https://github.com/williamzujkowski/nexus-eval-aider-polyglot) — Aider polyglot (six-language code edits, v0.1)
+- [nexus-eval-livecodebench](https://github.com/williamzujkowski/nexus-eval-livecodebench) — LiveCodeBench (competitive programming, v0.1)
+- [nexus-eval-atbench](https://github.com/williamzujkowski/nexus-eval-atbench) — atbench (agent-trajectory safety, v0.1)
 
 ## Ecosystem
 
