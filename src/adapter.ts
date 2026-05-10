@@ -69,10 +69,15 @@ export class TemplateBenchmarkAdapter
   implements BenchmarkAdapter<BenchmarkInstance, BenchmarkPrediction, BenchmarkEvalResult>
 {
   readonly name = 'template-bench'; // replace: 'humaneval', 'mbpp', etc.
-  readonly variant: string | undefined;
+  // Under exactOptionalPropertyTypes, `variant?: string` and
+  // `variant: string | undefined` are different types — the former
+  // means "may not be present", the latter means "must be present, may
+  // be the value undefined". The BenchmarkAdapter contract uses the
+  // former, so assign the field only when a variant was provided.
+  readonly variant?: string;
 
   constructor(config: BenchmarkConfig = {}) {
-    this.variant = config.variant;
+    if (config.variant !== undefined) this.variant = config.variant;
   }
 
   /**
