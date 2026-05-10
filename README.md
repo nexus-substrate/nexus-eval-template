@@ -95,6 +95,77 @@ The shipped repos use a consistent versioning ladder:
 
 Land v0.1 first to validate the pipeline shape and prompt template; the expensive infrastructure (Docker eval, GPU sandbox, etc.) goes in v0.2 once the pattern is proven.
 
+### v0.2 patterns (concrete, from shipped harnesses)
+
+`nexus-eval-aider-polyglot` and `nexus-eval-livecodebench` both shipped v0.2 with the same shape — copy this:
+
+**Loader (always async; PR-split into pieces):**
+
+```
+src/runner/<source>-loader.ts        # github-loader.ts, hf-loader.ts, ...
+```
+
+- Returns `Promise<readonly TInstance[]>` — never sync. Even cache-only paths are async so the public signature stays stable.
+- Accepts a `fetchImpl?: typeof fetch` injection point so unit tests don't monkey-patch globals. Default `globalThis.fetch`.
+- Caches normalised instances to `~/.nexus-eval-<bench>/cache/<source-slug>/<ref-slug>/<extra>.json`. Second run hits cache, skips network.
+- Pins a default `<ref>` (commit SHA / dataset config / release slice) and lets operators override via `--source <kind>:<ref>`. Reproducibility ≠ "use upstream main".
+- Reads `GITHUB_TOKEN` / `HF_TOKEN` env vars when present; fails closed with a "set the token if rate-limited" error message rather than retrying anonymously.
+- Filters at the fetch boundary (`platforms`, `languages`, `min-release-date`) so heavy paginations don't pull all-then-throw-away.
+
+**Sandboxed test runner (`runner/test-runner.ts` or `runner/<lang>-runner.ts`):**
+
+- Materialises the model's emitted output + the instance's hidden tests into a tmpdir, then `child_process.spawn`s the language toolchain. No shell, no string concatenation, no env inheritance for secrets.
+- Accepts a `spawnImpl?: SpawnImpl` injection point so unit tests don't actually run pytest / cargo / etc in CI. Default `child_process.spawn`.
+- Per-instance timeout via `setTimeout` + `child.kill('SIGKILL')` + a `timedOut` flag in the result.
+- Surfaces a `toolchainMissing: true` flag on `ENOENT` so operators get a clear "you need pytest in PATH" error instead of a confusing exit-code-1 verdict.
+- Caps stdout + stderr at 4 KB each. Exercise output is third-party; metadata stays bounded.
+- Refuses to materialise paths containing `..` (parent-directory traversal).
+- Scrubs the env passed to the subprocess: drop `OPENAI_*`, `ANTHROPIC_*`, `NEXUS_*`, `GITHUB_TOKEN`, `NPM_TOKEN`, `HF_TOKEN`, `AWS_*`. Exercise code is semi-trusted; env-var inspection blocked.
+
+**Adapter wiring:**
+
+```ts
+export class FooAdapter implements BenchmarkAdapter<Instance, Prediction, EvalResult> {
+  // runInstance: model call only — caches a "model-only verdict" so
+  // evaluate() has a sensible fallback when test execution is skipped.
+  async runInstance(...) { ... }
+
+  // evaluate: when runTests is on (default) AND tests exist AND code/edits
+  // were emitted, materialise tmpdir + run toolchain. Otherwise return
+  // the model-only verdict.
+  async evaluate(...) { ... }
+
+  // isPass: prefer test-based verdict when present; fall back to v0.1.
+  isPass(result) {
+    if (result.testsPassed !== undefined) return result.testsPassed;
+    return result.editsProduced /* or whatever the v0.1 signal was */;
+  }
+
+  // Test-only spawn injection.
+  setSpawnImplForTests(impl) { this.spawnImplForTests = impl; }
+}
+```
+
+**Type extensions (additive, non-breaking from v0.1):**
+
+```ts
+interface FooAdapterConfig {
+  // existing v0.1 fields...
+  readonly runTests?: boolean;        // default true; --no-run-tests opts out
+  readonly testTimeoutMs?: number;    // default 60_000 or 15_000 per test
+}
+
+interface FooEvalResult {
+  // existing v0.1 fields...
+  readonly testsPassed?: boolean;     // canonical pass/fail when present
+  readonly testRunner?: string;       // "pytest", "go test", ...
+  readonly testStderr?: string;       // truncated to 4 KB
+  readonly toolchainMissing?: boolean;
+}
+```
+
+**Don't break v0.1:** v0.2 `EvalResult` extensions are all optional. Old fixture-based runs that have no hidden tests still work — the test-runner skips, the v0.1 verdict stands.
+
 ### CI / release scaffolding
 
 Each shipped repo has the same two GitHub Actions workflows:
