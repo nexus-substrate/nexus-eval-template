@@ -38,5 +38,9 @@
     "nexus-agents": "^2.71.0",
     "typescript": "^5.9.0",
     "vitest": "^4.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nexus-substrate/nexus-eval-template.git"
   }
 }
