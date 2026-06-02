@@ -17,7 +17,7 @@ Copy this repo, implement the adapter methods against your benchmark, publish as
 
 ```sh
 # 1. Copy this repo
-gh repo create yourname/nexus-eval-<bench> --template williamzujkowski/nexus-eval-template --public
+gh repo create yourname/nexus-eval-<bench> --template nexus-substrate/nexus-eval-template --public
 
 # 2. Clone + install
 gh repo clone yourname/nexus-eval-<bench>
