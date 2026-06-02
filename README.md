@@ -91,7 +91,7 @@ The shipped repos use a consistent versioning ladder:
 
 - **v0.1 — model-only baseline**. Bundled fixture + single-round-trip model call + extract-output. Pass/fail = "did the model produce extractable output". No real evaluation.
 - **v0.2 — real evaluation**. HuggingFace / GitHub fetch loader. Sandboxed test execution. Pass/fail = "does the output pass the hidden tests".
-- **v0.3 — agentic flow**. Use `IAgenticAdapter` from `nexus-agents` (≥ 2.71.x with the [#2529](https://github.com/williamzujkowski/nexus-agents/issues/2529) primitive landed). The harness owns its toolset (`read_file` / `write_file` / `run_tests` / domain-specific tools); the adapter handles model orchestration. Multi-turn iteration on test failures. Workspace clone at base commit where the benchmark provides one.
+- **v0.3 — agentic flow**. Use `IAgenticAdapter` from `nexus-agents` (≥ 2.71.x with the [#2529](https://github.com/nexus-substrate/nexus-agents/issues/2529) primitive landed). The harness owns its toolset (`read_file` / `write_file` / `run_tests` / domain-specific tools); the adapter handles model orchestration. Multi-turn iteration on test failures. Workspace clone at base commit where the benchmark provides one.
 
 Land v0.1 first to validate the pipeline shape and prompt template; the expensive infrastructure (Docker eval, GPU sandbox, etc.) goes in v0.2 once the pattern is proven.
 
@@ -168,7 +168,7 @@ interface FooEvalResult {
 
 ### v0.3 patterns (agentic flow via `IAgenticAdapter`)
 
-When a v0.2 harness has a working test runner, the v0.3 promotion adds **multi-turn iteration**: the model edits → harness runs tests → model sees failures → model re-edits → … until pass or turn budget. Use the `IAgenticAdapter` primitive from `nexus-agents` ([#2529](https://github.com/williamzujkowski/nexus-agents/issues/2529)).
+When a v0.2 harness has a working test runner, the v0.3 promotion adds **multi-turn iteration**: the model edits → harness runs tests → model sees failures → model re-edits → … until pass or turn budget. Use the `IAgenticAdapter` primitive from `nexus-agents` ([#2529](https://github.com/nexus-substrate/nexus-agents/issues/2529)).
 
 **Shape:**
 
@@ -257,19 +257,19 @@ The nexus-agents core stays lean — benchmark harnesses are evaluation-only cod
 - Pull in its own dependency tree (Docker SDKs, dataset libs, eval-specific Python tooling) without bloating the npm-installable core.
 - Be peer-tested in isolation — the BenchmarkAdapter contract at the boundary is the only API surface either side has to maintain.
 
-This is policy, not a suggestion: nexus-agents' [`benchmark-extraction-gate`](https://github.com/williamzujkowski/nexus-agents/blob/main/.github/workflows/benchmark-extraction-gate.yml) workflow fails CI on any PR that adds files under `packages/nexus-agents/src/swe-bench/` or `packages/nexus-agents/src/benchmarks/atbench/`. If you're proposing a new benchmark, this template is the right starting point. See [nexus-agents epic #2514](https://github.com/williamzujkowski/nexus-agents/issues/2514) for the rationale.
+This is policy, not a suggestion: nexus-agents' [`benchmark-extraction-gate`](https://github.com/nexus-substrate/nexus-agents/blob/main/.github/workflows/benchmark-extraction-gate.yml) workflow fails CI on any PR that adds files under `packages/nexus-agents/src/swe-bench/` or `packages/nexus-agents/src/benchmarks/atbench/`. If you're proposing a new benchmark, this template is the right starting point. See [nexus-agents epic #2514](https://github.com/nexus-substrate/nexus-agents/issues/2514) for the rationale.
 
 ## Existing benchmarks using this pattern
 
-- [nexus-eval-swebench](https://github.com/williamzujkowski/nexus-eval-swebench) — SWE-bench Lite / Verified / Full (clean-room rewrite, v0.2)
-- [nexus-eval-swebench-pro](https://github.com/williamzujkowski/nexus-eval-swebench-pro) — SWE-bench Pro (731 multi-language instances)
-- [nexus-eval-aider-polyglot](https://github.com/williamzujkowski/nexus-eval-aider-polyglot) — Aider polyglot (six-language code edits, v0.1)
-- [nexus-eval-livecodebench](https://github.com/williamzujkowski/nexus-eval-livecodebench) — LiveCodeBench (competitive programming, v0.1)
-- [nexus-eval-atbench](https://github.com/williamzujkowski/nexus-eval-atbench) — atbench (agent-trajectory safety, v0.1)
+- [nexus-eval-swebench](https://github.com/nexus-substrate/nexus-eval-swebench) — SWE-bench Lite / Verified / Full (clean-room rewrite, v0.2)
+- [nexus-eval-swebench-pro](https://github.com/nexus-substrate/nexus-eval-swebench-pro) — SWE-bench Pro (731 multi-language instances)
+- [nexus-eval-aider-polyglot](https://github.com/nexus-substrate/nexus-eval-aider-polyglot) — Aider polyglot (six-language code edits, v0.1)
+- [nexus-eval-livecodebench](https://github.com/nexus-substrate/nexus-eval-livecodebench) — LiveCodeBench (competitive programming, v0.1)
+- [nexus-eval-atbench](https://github.com/nexus-substrate/nexus-eval-atbench) — atbench (agent-trajectory safety, v0.1)
 
 ## Ecosystem
 
-See [nexus-agents ECOSYSTEM.md](https://github.com/williamzujkowski/nexus-agents/blob/main/ECOSYSTEM.md) for the full registry.
+See [nexus-agents ECOSYSTEM.md](https://github.com/nexus-substrate/nexus-agents/blob/main/ECOSYSTEM.md) for the full registry.
 
 ## License
 
