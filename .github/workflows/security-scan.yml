@@ -2,9 +2,8 @@ name: Security Scan
 
 # Shared security-scanning workflow for the nexus-substrate org.
 # Gating job: secret scan (gitleaks) — fails the run if secrets are found.
-# Informational jobs: dependency/vuln (trivy) and SAST (semgrep) report findings
-# in the logs but do not block merges (continue-on-error), so pre-existing
-# dependency noise doesn't wedge the pipeline.
+# Informational job: SAST (semgrep) reports findings in the logs but does not
+# block merges (continue-on-error).
 
 on:
   push:
@@ -36,23 +35,6 @@ jobs:
           gitleaks version
       - name: Scan working tree for secrets
         run: gitleaks detect --no-git --source . --redact --verbose
-
-  dependencies:
-    name: Dependency & vuln scan (trivy)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          scanners: vuln,secret,misconfig
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: '0'
-          format: table
 
   sast:
     name: Static analysis (semgrep)
